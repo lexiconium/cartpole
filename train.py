@@ -116,7 +116,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_episodes", type=int, default=10000)
     parser.add_argument("--update_interval", type=int, default=20)
     parser.add_argument("--learning_rate", type=float, default=5e-4)
-    parser.add_argument("--weight_decay", type=float, default=0.1)
+    parser.add_argument("--weight_decay", type=float, default=1e-3)
     parser.add_argument("--gamma", type=float, default=0.98)
     parser.add_argument("--epsilon", type=float, default=0.08)
     parser.add_argument("--seed", type=int, default=42)
