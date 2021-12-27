@@ -80,4 +80,4 @@ class ScoreLogger:
             for file_name in os.listdir(LOG_DIR)
             if file_name.startswith(name) and file_name.endswith(".log")
         )
-        return int(file_names[-1][:-4].split("_")[-1]) + 1 if file_names else 0
+        return int(file_names[-1][:-4].split("_")[-1]) if file_names else 0
