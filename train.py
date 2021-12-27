@@ -13,12 +13,14 @@ import gym
 from models.dqn import DQN
 from models.core.buffer import ReplayBuffer
 from utils.seed import seed
-from utils.logger import SimpleLoggerWrapper
+from utils.logger import SimpleLoggerWrapper, ScoreLogger
 
+model_name = "dqn"
 
 logger = SimpleLoggerWrapper.get_logger(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", name="dqn"
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", name=model_name
 )
+scores = ScoreLogger()
 
 
 def _train(
@@ -71,7 +73,6 @@ def train(args: argparse.Namespace):
         capacity=int(5e4), field_names=["observation", "action", "reward", "next_observation", "done"]
     )
 
-    durations = deque([], maxlen=100)
     for episode in range(args.num_episodes):
         observation = env.reset()
         epsilon = max(0.01, args.epsilon - 0.01 * (episode / 200))
@@ -83,7 +84,7 @@ def train(args: argparse.Namespace):
             buffer.push(observation, action, reward / 100, next_observation, done)
 
             if done:
-                durations.append(t)
+                scores.append(t)
                 break
 
             observation = next_observation
@@ -100,9 +101,10 @@ def train(args: argparse.Namespace):
 
         if (episode + 1) % args.update_interval == 0:
             target.load_state_dict(policy.state_dict())
-            mean = np.array(durations).mean().item()
+            mean = np.array(scores[-20:]).mean().item()
             logger.info(msg=f"{episode=}\t{mean=}")
 
+    scores.draw(name=model_name)
     env.close()
 
 
