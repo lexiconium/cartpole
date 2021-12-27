@@ -102,7 +102,7 @@ def train(args: argparse.Namespace):
         if (episode + 1) % args.update_interval == 0:
             target.load_state_dict(policy.state_dict())
             mean = np.array(scores[-20:]).mean().item()
-            logger.info(msg=f"{episode=}\t{mean=}")
+            logger.info(msg=f"Episode: {episode + 1}\t{args.update_interval}-episode mean score: {mean}")
 
     scores.draw(name=model_name)
     env.close()
