@@ -10,8 +10,8 @@ import numpy as np
 
 import gym
 
-from models.dqn import DQN
-from models.core.buffer import ReplayBuffer
+from algorithms.dqn import DQN
+from algorithms.core.buffer import ReplayBuffer
 from utils.seed import seed
 from utils.logger import SimpleLoggerWrapper, ScoreLogger
 
