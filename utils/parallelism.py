@@ -11,6 +11,7 @@ class ParallelEnvs:
     def __init__(self, id: str, num_parallel: int):
         self.id = id
         self.num_parallel = num_parallel
+        self.envs = []
         self._action_space = None
         self._observation_space = None
 
@@ -19,28 +20,29 @@ class ParallelEnvs:
         self.processes = []
 
         def f(pid: int, child: Connection):
-            env = gym.make(id)
-            env.seed(pid)
-
-            while True:
-                cmd, recv = child.recv()
-                if cmd == "action_space":
-                    action_space = env.action_space
-                    child.send(action_space)
-                elif cmd == "observation_space":
-                    observation_space = env.observation_space
-                    child.send(observation_space)
-                elif cmd == "step":
-                    observation, reward, done, info = env.step(recv)
-                    child.send([observation, reward, done, info])
-                elif cmd == "reset":
-                    observation = env.reset()
-                    child.send(observation)
-                else:
-                    env.close()
-                    return
+            env = self.envs[pid]
+            
+            cmd, recv = child.recv()
+            if cmd == "action_space":
+                action_space = env.action_space
+                child.send(action_space)
+            elif cmd == "observation_space":
+                observation_space = env.observation_space
+                child.send(observation_space)
+            elif cmd == "step":
+                observation, reward, done, info = env.step(recv)
+                child.send([observation, reward, done, info])
+            elif cmd == "reset":
+                observation = env.reset()
+                child.send(observation)
+            else:
+                env.close()
 
         for pid in range(num_parallel):
+            env = gym.make(id)
+            env.seed(pid)
+            self.envs.append(env)
+
             parent, child = Pipe()
             self.parents.append(parent)
             self.childs.append(child)
