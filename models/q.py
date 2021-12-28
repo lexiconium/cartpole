@@ -4,10 +4,10 @@ from typing import List
 import torch
 from torch import nn
 
-from .core.core import mlp
+from .core.nn import mlp
 
 
-class DQN(nn.Module):
+class QNet(nn.Module):
     def __init__(
         self,
         observation_dim: int,
