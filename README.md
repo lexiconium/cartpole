@@ -8,7 +8,7 @@ Simple Open-AI Gym CartPole experiments.
 
 ## How to Use
 ```
-python train.py
+python dqn.py
 ```
 Below additional arguments can be used along.
 ```
