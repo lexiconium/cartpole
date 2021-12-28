@@ -2,7 +2,7 @@
 
 Simple Open-AI Gym CartPole experiments.
 
-## Models Available
+## Available Algorithms
 
 [DQN](https://github.com/lexiconium/cartpole/blob/main/models/dqn.py): [Playing Atari with Deep Reinforcement Learning](https://arxiv.org/abs/1312.5602)
 
