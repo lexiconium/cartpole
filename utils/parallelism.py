@@ -1,9 +1,6 @@
-from typing import List
-from multiprocessing.connection import Connection
+import multiprocessing
 
-from torch.multiprocessing import Process, Pipe
 import numpy as np
-
 import gym
 
 
@@ -11,82 +8,61 @@ class ParallelEnvs:
     def __init__(self, id: str, num_parallel: int):
         self.id = id
         self.num_parallel = num_parallel
-        self.envs = []
-        self._action_space = None
+        self.pool = multiprocessing.Pool(num_parallel)
+        self.envs = [gym.make(id) for _ in range(num_parallel)]
+        self.pid = 0
+
         self._observation_space = None
+        self._action_space = None
 
-        self.parents = []
-        self.childs = []
-        self.processes = []
-
-        def f(pid: int, child: Connection):
-            env = self.envs[pid]
-            
-            cmd, recv = child.recv()
-            if cmd == "action_space":
-                action_space = env.action_space
-                child.send(action_space)
-            elif cmd == "observation_space":
-                observation_space = env.observation_space
-                child.send(observation_space)
-            elif cmd == "step":
-                observation, reward, done, info = env.step(recv)
-                child.send([observation, reward, done, info])
-            elif cmd == "reset":
-                observation = env.reset()
-                child.send(observation)
-            else:
-                env.close()
-
-        for pid in range(num_parallel):
-            env = gym.make(id)
-            env.seed(pid)
-            self.envs.append(env)
-
-            parent, child = Pipe()
-            self.parents.append(parent)
-            self.childs.append(child)
-
-            p = Process(target=f, args=(pid, child), daemon=True)
-            p.start()
-            self.processes.append(p)
+    def __repr__(self):
+        return self.id
 
     def __len__(self):
         return self.num_parallel
 
-    def set_action_space(self):
-        self._action_space = self.parents[0].send(["action_space", None])
-        return self._action_space
-
-    @property
-    def action_space(self):
-        if self._action_space is None:
-            return self.set_action_space()
-        return self._action_space
-
-    def set_observation_space(self):
-        self._observation_space = self.parents[0].send(["observation_space", None])
-        return self._observation_space
+    def _set_observation_space(self):
+        self._observation_space = self.envs[0].observation_space
 
     @property
     def observation_space(self):
-        if self._observation_space is None:
-            return self.set_observation_space()
+        if not self._observation_space:
+            self._set_observation_space()
         return self._observation_space
 
-    def step(self, actions: List):
-        for parent, action in zip(self.parents, actions):
-            parent.send(["step", action])
-        observations, rewards, dones, info = zip(*[parent.recv() for parent in self.parents])
-        return np.stack(observations), np.stack(rewards), np.stack(dones), info
+    def _set_action_space(self):
+        self._action_space = self.envs[0].action_space
+
+    @property
+    def action_space(self):
+        if not self._action_space:
+            self._set_action_space()
+        return self._action_space
+
+    @staticmethod
+    def _step(env_action_pair):
+        env, action = env_action_pair
+        next_state, reward, done, _ = env.step(action)
+        if done:
+            env.reset()
+
+        return env, next_state, reward, done
+
+    def step(self, actions: np.ndarray):
+        next_states, rewards, dones = [], [], []
+
+        env_action_pairs = list(zip(self.envs, actions))
+        for idx, (env, next_state, reward, done) in enumerate(self.pool.imap(self._step, env_action_pairs)):
+            self.envs[idx] = env
+            next_states.append(next_state)
+            rewards.append(reward)
+            dones.append(done)
+
+        return np.array(next_states), np.array(rewards), np.array(dones)
 
     def reset(self):
-        for parent in self.parents:
-            parent.send("reset", None)
-        return np.stack(parent.recv() for parent in self.parents)
+        return np.stack([env.reset() for env in self.envs])
 
     def close(self):
-        for parent in self.parents:
-            parent.send("close", None)
-        for child in self.childs:
-            child.join()
+        self.pool.close()
+        self.pool.join()
