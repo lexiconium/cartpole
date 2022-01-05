@@ -5,13 +5,13 @@ Simple Open-AI Gym CartPole experiments.
 ## Available Algorithms
 
 ### Deeq Q-Network
-[DQN](https://github.com/lexiconium/cartpole/blob/main/models/dqn.py): [Playing Atari with Deep Reinforcement Learning](https://arxiv.org/abs/1312.5602)
+[DQN](https://github.com/lexiconium/cartpole/blob/main/dqn.py): [Playing Atari with Deep Reinforcement Learning](https://arxiv.org/abs/1312.5602)
 ```
 python dqn.py
 ```
 
 ### Advantage Actor-Critic
-[A2C](https://github.com/lexiconium/cartpole/blob/main/models/a2c.py): [Asynchronous Methods for Deep Reinforcement Learning](https://arxiv.org/abs/1602.01783)
+[A2C](https://github.com/lexiconium/cartpole/blob/main/a2c.py): [Asynchronous Methods for Deep Reinforcement Learning](https://arxiv.org/abs/1602.01783)
 ```
 python a2c.py
 ```
