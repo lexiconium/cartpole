@@ -66,8 +66,8 @@ def train(args: argparse.Namespace):
     while step < TRAINING_STEPS:
         state_records, action_records, reward_records, done_records = [], [], [], []
         for _ in range(args.update_interval):
-            probabilities = actor(torch.tensor(states).float())
-            actions = torch.multinomial(F.softmax(probabilities, dim=-1), num_samples=1).view(-1).numpy()
+            probabilities = F.softmax(actor(torch.tensor(states).float()), dim=-1)
+            actions = torch.multinomial(probabilities, num_samples=1).view(-1).numpy()
             next_states, rewards, dones = envs.step(actions)
 
             state_records.append(states)
@@ -84,6 +84,7 @@ def train(args: argparse.Namespace):
 
         state_records = torch.from_numpy(np.array(state_records)).float()
         state_values = critic(state_records).squeeze(dim=-1)
+        
         advantages = targets - state_values
 
         action_records = torch.from_numpy(np.array(action_records)).unsqueeze(dim=-1)
@@ -109,7 +110,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--env", type=str, default="CartPole-v1")
-    parser.add_argument("--num_parallel", type=int, default=4)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--num_episodes", type=int, default=10000)
     parser.add_argument("--update_interval", type=int, default=20)
