@@ -5,7 +5,7 @@ import torch.nn as nn
 
 def mlp(
     layer_dims: List[int],
-    activation: nn.Module,
+    activation: nn.Module = nn.Identity,
     output_activation: nn.Module = nn.Identity,
     p_dropout: float = 0.1,
 ) -> nn.Sequential:
