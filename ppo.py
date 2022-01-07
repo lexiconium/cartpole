@@ -16,6 +16,12 @@ from utils.parallelism import ParallelEnvs
 from utils.logger import SimpleLoggerWrapper, ScoreLogger
 
 
+def compute_advantages(deltas, gamma):
+    advantages_t = 0
+    advantages = [(advantages_t := deltas_t + gamma * advantages_t) for deltas_t in deltas[::-1]][::-1]
+    return torch.from_numpy(np.array(advantages)).float()
+
+
 def compute_bellman(state_values, reward_records, done_records, gamma):
     targets = [
         (state_values := rewards + masks * gamma * state_values)
@@ -60,7 +66,14 @@ def train(args: argparse.Namespace):
 
     states = envs.reset()
     for episode in range(args.num_episodes):
-        probability_records, state_records, action_records, reward_records, done_records = [], [], [], [], []
+        (
+            probability_records,
+            state_records,
+            next_state_records,
+            action_records,
+            reward_records,
+            done_records,
+        ) = ([], [], [], [], [], [])
         for _ in range(args.t_steps):
             probabilities = F.softmax(actor_critic.actor(torch.tensor(states).float()), dim=-1)
             actions = torch.multinomial(probabilities, num_samples=1).view(-1).numpy()
@@ -68,6 +81,7 @@ def train(args: argparse.Namespace):
 
             probability_records.append(probabilities.detach().numpy())
             state_records.append(states)
+            next_state_records.append(next_states)
             action_records.append(actions)
             reward_records.append(rewards / 100)
             done_records.append(1 - dones)
@@ -75,12 +89,21 @@ def train(args: argparse.Namespace):
             states = next_states
 
         state_records = torch.from_numpy(np.array(state_records)).float()
+        next_state_records = torch.from_numpy(np.array(next_state_records)).float()
         action_records = torch.from_numpy(np.array(action_records)).unsqueeze(dim=-1)
+        reward_records = torch.from_numpy(np.array(reward_records)).float()  # 20 X 16
         for epoch in range(args.k_epochs):
-            final_state_values = actor_critic.critic(torch.tensor(states).float()).view(-1).detach().numpy()
-            targets = compute_bellman(final_state_values, reward_records, done_records, args.gamma)
-            state_values = actor_critic.critic(state_records).squeeze(dim=-1)
-            advantages = targets - state_values
+            deltas = (
+                (
+                    reward_records.unsqueeze(dim=-1)
+                    + args.gamma * actor_critic.critic(next_state_records)
+                    - actor_critic.critic(state_records)
+                )
+                .squeeze(dim=-1)
+                .detach()
+                .numpy()
+            )
+            advantages = compute_advantages(deltas=deltas, gamma=args.gamma)
 
             probabilities = F.softmax(actor_critic.actor(state_records), dim=-1).gather(
                 dim=-1, index=action_records
@@ -93,13 +116,15 @@ def train(args: argparse.Namespace):
             objective = torch.minimum(
                 ratios * advantages, ratios.clip(min=1 - args.epsilon, max=1 + args.epsilon) * advantages
             )
-            squared_err = advantages ** 2
-            loss = (objective - squared_err).mean()
 
+            #TODO
+            squared_err = None
+            loss = (objective - squared_err).mean()
+            
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-        
+
         test(id=args.env, actor_critic=actor_critic)
 
     envs.close()
