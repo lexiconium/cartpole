@@ -16,6 +16,12 @@ python dqn.py
 python a2c.py
 ```
 
+### Proximal Policy Optimization
+[PPO](https://github.com/lexiconium/cartpole/blob/main/ppo.py): [Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347)
+```
+python ppo.py
+```
+
 ### Additional Arguments
 
 ```
