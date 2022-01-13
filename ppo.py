@@ -22,14 +22,6 @@ def compute_advantages(deltas, gamma):
     return torch.from_numpy(np.array(advantages)).float()
 
 
-def compute_bellman(state_values, reward_records, done_records, gamma):
-    targets = [
-        (state_values := rewards + masks * gamma * state_values)
-        for rewards, masks in zip(reward_records[::-1], done_records[::-1])
-    ][::-1]
-    return torch.from_numpy(np.array(targets)).float()
-
-
 def test(id: str, actor_critic: ActorCritic):
     env = gym.make(id)
 
@@ -91,12 +83,14 @@ def train(args: argparse.Namespace):
         state_records = torch.from_numpy(np.array(state_records)).float()
         next_state_records = torch.from_numpy(np.array(next_state_records)).float()
         action_records = torch.from_numpy(np.array(action_records)).unsqueeze(dim=-1)
-        reward_records = torch.from_numpy(np.array(reward_records)).float()  # 20 X 16
+        reward_records = torch.from_numpy(np.array(reward_records)).float()
         for epoch in range(args.k_epochs):
             deltas = (
                 (
                     reward_records.unsqueeze(dim=-1)
-                    + args.gamma * actor_critic.critic(next_state_records)
+                    + args.gamma
+                    * actor_critic.critic(next_state_records)
+                    * torch.from_numpy(np.array(done_records)).unsqueeze(dim=-1)
                     - actor_critic.critic(state_records)
                 )
                 .squeeze(dim=-1)
@@ -113,14 +107,15 @@ def train(args: argparse.Namespace):
             )
             ratios = (probabilities / old_probabilities).squeeze(dim=-1)
 
-            objective = torch.minimum(
+            surrogate = -torch.minimum(
                 ratios * advantages, ratios.clip(min=1 - args.epsilon, max=1 + args.epsilon) * advantages
             )
+            state_values = actor_critic.critic(state_records).squeeze(dim=-1)
+            next_state_values = actor_critic.critic(next_state_records).squeeze(dim=-1)
+            squared_err = F.mse_loss(state_values, next_state_values)
+            # TODO: Add entropy term for sufficient exploration
+            loss = (surrogate + squared_err).mean()
 
-            #TODO
-            squared_err = None
-            loss = (objective - squared_err).mean()
-            
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
