@@ -99,13 +99,12 @@ def train(args: argparse.Namespace):
             )
             advantages = compute_advantages(deltas=deltas, gamma=args.gamma)
 
-            probabilities = F.softmax(actor_critic.actor(state_records), dim=-1).gather(
+            probabilities = F.softmax(actor_critic.actor(state_records), dim=-1)
+            action_probabilities = probabilities.gather(dim=-1, index=action_records)
+            old_action_probabilities = torch.from_numpy(np.array(probability_records)).gather(
                 dim=-1, index=action_records
             )
-            old_probabilities = torch.from_numpy(np.array(probability_records)).gather(
-                dim=-1, index=action_records
-            )
-            ratios = (probabilities / old_probabilities).squeeze(dim=-1)
+            ratios = (action_probabilities / old_action_probabilities).squeeze(dim=-1)
 
             surrogate = -torch.minimum(
                 ratios * advantages, ratios.clip(min=1 - args.epsilon, max=1 + args.epsilon) * advantages
@@ -113,8 +112,9 @@ def train(args: argparse.Namespace):
             state_values = actor_critic.critic(state_records).squeeze(dim=-1)
             next_state_values = actor_critic.critic(next_state_records).squeeze(dim=-1)
             squared_err = F.mse_loss(state_values, next_state_values)
-            # TODO: Add entropy term for sufficient exploration
-            loss = (surrogate + squared_err).mean()
+            negative_entropy = torch.sum(probabilities * torch.log(probabilities), dim=-1)
+
+            loss = (surrogate + squared_err + 0.1 * negative_entropy).mean()
 
             optimizer.zero_grad()
             loss.backward()
@@ -132,6 +132,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_episodes", type=int, default=10000)
     parser.add_argument("--k_epochs", type=int, default=3)
     parser.add_argument("--t_steps", type=int, default=20)
+    parser.add_argument("--update_interval", type=int, default=20)
     parser.add_argument("--learning_rate", type=float, default=5e-4)
     parser.add_argument("--weight_decay", type=float, default=1e-3)
     parser.add_argument("--gamma", type=float, default=0.98)
