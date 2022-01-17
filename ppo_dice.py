@@ -16,7 +16,7 @@ from models.actor_critic import Actor, Critic
 N = 3  # num epochs
 K = 3  # num discriminator update iteration
 
-gamma = 0.99
+gamma = 0.98
 eps = 0.1
 lmbda = 0.99
 
@@ -85,8 +85,8 @@ def train(args: argparse.Namespace):
     )
 
     memory = Memory(field_names=["state", "prob", "action", "reward", "next_state", "done"])
+    state = env.reset()
     for episode in range(args.num_episodes):
-        state = env.reset()
         for _ in range(20):
             """
             generate a batch of M rollouts (M: number of environments)
@@ -97,7 +97,7 @@ def train(args: argparse.Namespace):
 
             next_state, reward, done, _ = env.step(action.item())
 
-            memory.push(state, action_probs, action, reward / 100, next_state, done)
+            memory.push(state, action_probs, action, reward / 100, next_state, 1 - done)
             state = next_state
 
             if done:
@@ -105,21 +105,9 @@ def train(args: argparse.Namespace):
 
         states, probs, actions, rewards, next_states, dones = memory.rollout()
 
-        # compute advantages
-        deltas = (rewards.unsqueeze(dim=-1) + gamma * critic(next_states) - critic(states)).detach().numpy()
-        advantage = 0
-        advantages = torch.from_numpy(
-            np.array([(advantage := delta + gamma * advantage) for delta in deltas[::-1]][::-1])
-        )
-
-        # compute target values
-        target = critic(torch.from_numpy(next_state))
-        targets = torch.tensor(
-            [(target := reward + gamma * target) for reward in rewards.numpy()[::-1]][::-1]
-        )
-
         if done:
             memory.reset()
+            state = env.reset()
 
         actions = actions.long().unsqueeze(dim=-1)
         for epoch in range(N):
@@ -143,32 +131,44 @@ def train(args: argparse.Namespace):
 
                 discriminator_optimizer.zero_grad()
                 discriminator_loss.backward()
-                print(f"{discriminator_loss=}")
                 discriminator_optimizer.step()
 
-            # TODO: compute value loss
-            value_loss = F.mse_loss(critic(states).squeeze(dim=-1), targets)
+            # compute value loss
+            value_loss = F.mse_loss(critic(states), critic(next_states))
 
-            # TODO: compute PPO clipped loss
-            action_probs = F.softmax(actor(states), dim=-1)
-            ratios = action_probs / probs
-            clip_loss = torch.minimum(advantages * ratios, advantages * torch.clip(ratios, 1 - eps, 1 + eps))
-            # discriminator_loss = discriminator_loss.detach().clone()
-            # negative_clip_loss = -(clip_loss + lmbda * discriminator_loss).mean()
-            negative_clip_loss = -clip_loss.mean()
+            # compute ppo loss
+            deltas = (
+                (rewards.unsqueeze(dim=-1) + gamma * critic(next_states) - critic(states))
+                .squeeze(dim=-1)
+                .detach()
+                .numpy()
+            )
+            advantage = 0
+            advantages = torch.from_numpy(
+                np.array([(advantage := delta + gamma * lmbda * advantage) for delta in deltas[::-1]][::-1])
+            )
 
-            # TODO: update value and policy functions
+            action_probs = F.softmax(actor(states), dim=-1).gather(dim=-1, index=actions)
+            old_action_probs = probs.gather(dim=-1, index=actions)
+            ratios = (action_probs / old_action_probs).squeeze(dim=-1)
+
+            clipped_loss = torch.minimum(
+                advantages * ratios, advantages * torch.clip(ratios, 1 - eps, 1 + eps)
+            )
+            discriminator_loss = discriminator_loss.detach().clone()
+            negative_clipped_loss = -(clipped_loss + lmbda * discriminator_loss)
+
+            # update value and policy functions
             critic_optimizer.zero_grad()
             value_loss.backward()
-            print(f"{value_loss=}")
             critic_optimizer.step()
 
             actor_optimizer.zero_grad()
-            negative_clip_loss.backward()
-            print(f"{negative_clip_loss=}")
+            negative_clipped_loss.mean().backward()
             actor_optimizer.step()
 
         test(id=args.env, actor=actor)
+
     env.close()
 
 
